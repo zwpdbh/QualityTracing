@@ -2,74 +2,32 @@
 open System
 
 module Demos = 
-    open ThreadAgent
+    open PhotoAgent
     open Person
     open Photo
-    
+    open PhotoManagement
+
     let demoConcurrentlyUpdatePhoto () = 
-        let persons = 
-            seq {
-                for x in [1..3] do 
-                    yield {
-                        Id = "person" + string x 
-                        Name = "zw" + string x 
-                        DepartmentKey = "Dep" + string x 
-                    }
-            }
-            |> Array.ofSeq
 
+        let photo = DB.pickRandomOne DB.photos
+        let photoAgent = new PhotoAgent(photo)
 
-        let photo =
-            {
-                Id = "1" 
-                Title = None 
-                Content = System.Text.Encoding.ASCII.GetBytes("hello world!")
-                Format = PicFormat.PNG
-                Messages = None
-                CreatAt = DateTime.Now
-            }
-
-        let threadAgent = new ThreadAgent(photo)
-
-        let messages = [
-            Text {
-                Id = "1"
-                Content = "text message 01"
-                Who = persons[0]
-                CreatedAt = DateTime.Now
-                ForAnnotation = None 
-            }
-            Annotate {
-                Id = "2"
-                title = Some "This part01 has problem"
-                Where = Rectangle({x=100; y = 200}, 50, 75)
-                Who = persons[1]
-                CreatedAt = DateTime.Now
-            }
-            Annotate {
-                Id = "3"
-                title = Some "This part02 has problem"
-                Where = Circle({x=200; y = 300}, 10)
-                Who = persons[2]
-                CreatedAt = DateTime.Now            
-            }
-        ]
-
-        let printMessage messages = 
+        let printMessages messages = 
             messages 
             |> List.iter (fun x -> 
                 printfn $"{x}"
             )
 
-        printfn "Concurrently send messages to photo agent"
-        messages
-        |> List.map threadAgent.AddMessage 
+        printfn "Show A photo agent can process many messages:\n"
+
+        DB.messages
+        |> Seq.map photoAgent.ProcessMessage 
         |> Async.Parallel 
         |> Async.RunSynchronously
         |> Array.choose (fun eachResonse -> 
             match eachResonse with 
             | Result.Ok response -> 
-                printfn $"\nAdded Message result:\n {printMessage response}"
+                printfn $"\nAdded Message result:\n {printMessages [response]}"
                 Some response
             | _ ->
                 None 
@@ -80,19 +38,40 @@ module Demos =
         printfn "\nView the message associated with a photo"
         let response = 
             async {
-                return! threadAgent.ListMessages ()
+                return! photoAgent.ListMessages ()
             } 
             |> Async.RunSynchronously
         match response with 
         | Result.Ok messagesList -> 
             match messagesList with 
             | Some messages -> 
-                printMessage messages
+                printMessages messages
             | None -> 
                 failwith "No messages"
         | err ->
             failwith $"err: {err}"
 
+
+    let demoManagementAgent () = 
+        printfn "simulate 20 persons, working on 200 photos with 50000 messages"
+
+        DB.messages
+        |> Seq.map PhotoManagement.processMessage 
+        |> Async.Parallel
+        |> Async.RunSynchronously
+        |> Array.choose (fun eachResponse -> 
+            match eachResponse with 
+            | Result.Ok response -> 
+                Some response
+            | _ -> 
+                None 
+        )
+        |> ignore
+
+
+
+        
+            
 
 
         
