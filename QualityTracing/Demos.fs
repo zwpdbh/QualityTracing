@@ -3,14 +3,13 @@ open System
 
 module Demos = 
     open PhotoAgent
-    open Person
-    open Photo
-    open PhotoManagement
+    open ManagementService
+    open FSharp.Control
 
     let demoConcurrentlyUpdatePhoto () = 
 
-        let photo = DB.pickRandomOne DB.photos
-        let photoAgent = new PhotoAgent(photo)
+        let photoId = DB.pickRandomOne DB.photoIds
+        let photoAgent = new PhotoAgent(photoId, DB.getPhoto)
 
         let printMessages messages = 
             messages 
@@ -50,28 +49,41 @@ module Demos =
                 failwith "No messages"
         | err ->
             failwith $"err: {err}"
+        
+    let execution () = 
+        DB.messages
+        |> AsyncSeq.ofSeq
+        |> AsyncSeq.mapAsync ManagementService.processMessage
+        |> AsyncSeq.choose (fun x -> 
+                match x with 
+                | Result.Ok response -> 
+                    Some response
+                | _ -> 
+                    None 
+        ) 
+        |> AsyncSeq.toListSynchronously
+        |> fun messages -> 
+            printfn $"Total processed messages: {messages.Length}"
+            messages
+        |> List.groupBy (fun x -> 
+            match x with 
+            | Photo.Text message -> message.WhichPhoto
+            | Photo.Annotate message -> message.WhichPhoto 
+        )
+        |> List.iter (fun (whichPhoto, messages) -> 
+            printfn $"PhotoAgent{whichPhoto} has {messages.Length} messages"
+        )
 
 
     let demoManagementAgent () = 
-        printfn "simulate 20 persons, working on 200 photos with 50000 messages"
+        // Test if ManagementService and photoAgents works
+        let duration f =
+            let timer = new System.Diagnostics.Stopwatch()
+            timer.Start()
+            f () |> ignore
+            timer.ElapsedMilliseconds
 
-        DB.messages
-        |> Seq.map PhotoManagement.processMessage 
-        |> Async.Parallel
-        |> Async.RunSynchronously
-        |> Array.choose (fun eachResponse -> 
-            match eachResponse with 
-            | Result.Ok response -> 
-                Some response
-            | _ -> 
-                None 
-        )
-        |> ignore
-
-
-
+        printfn $"simulate {DB.nPersons} persons, working on {DB.nPhotos} photos with {DB.nMessages} messages"
         
-            
-
-
-        
+        let result = duration execution
+        printfn $"===Took {result} ms===\n\n\n"

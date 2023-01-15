@@ -77,26 +77,35 @@ module Photo =
 module PhotoAgent = 
 
     type PhotoMsg = 
-        | AddPhotoMessage of AsyncReplyChannel<Result<Photo.Message, string>> * Photo.Message
+        | SendPhotoMessage of AsyncReplyChannel<Result<Photo.Message, string>> * Photo.Message
         | ListPhotoMessages of AsyncReplyChannel<Result<Photo.Message list option, string>>
         // TBD:: we could add more messages to support other operations
 
-    type PhotoAgent (photo: Photo.Photo) = 
-        let photo = photo 
+    type PhotoAgent (photoId: string, f: string -> Async<Photo.Photo option>) = 
+        let photoResult = 
+            async {
+                return! f photoId
+            }|> Async.RunSynchronously
+        let photo = 
+            match photoResult with 
+            | Some p -> p 
+            | _ -> failwith ""
+
         let agent = 
             MailboxProcessor.Start(fun inbox -> 
                 let rec loop (messages: Photo.Message list option) = 
                     async {
                         let! msg = inbox.Receive()
                         match msg with 
-                        | AddPhotoMessage (chnl, message) -> 
+                        | SendPhotoMessage (chnl, message) -> 
                             let messages' = 
                                 chnl.Reply (Result.Ok message)
                                 match messages with 
                                 | None ->                                    
                                     Some [message]
                                 | Some existingMessages -> 
-                                    Some (message::existingMessages)                                    
+                                    Some (message::existingMessages)     
+                            //printfn "updated messages state: %A" messages'
                             return! loop(messages')
                         | ListPhotoMessages chnl -> 
                             chnl.Reply (Result.Ok messages)
@@ -107,7 +116,7 @@ module PhotoAgent =
 
         member x.ProcessMessage (message: Photo.Message) = 
             async {
-                return! agent.PostAndAsyncReply(fun chnl -> AddPhotoMessage(chnl, message))
+                return! agent.PostAndAsyncReply(fun chnl -> SendPhotoMessage(chnl, message))
             }
 
         member x.ListMessages () = 
@@ -124,25 +133,8 @@ module PhotoManagement =
     type ManagePhotoMsg = 
         | GetPhotoAgent of AsyncReplyChannel<Result<PhotoAgent, string>> * string
 
-    
-    let simplePhotoApi id = 
-        // Could be bottleneck 
-        async {
-            let photo = {
-                Id = id 
-                Title = None 
-                ImgPath = "driverX/" + id
-                ImgSHA1 = "Image SHA1"
-                Format = PicFormat.PNG
-                Messages = None
-                CreatAt = System.DateTime.Now
-                Product = "SomeProductNo."
-            }
-            return photo
-        }
-
-    type PhotoManagementAgent () = 
-        // Works as memory cache
+    type PhotoManagementAgent (getPhotoFun: string -> Async<Photo.Photo option>) = 
+        let getPhoto = getPhotoFun
         let lookupMap: Map<string, PhotoAgent> = Map.empty
         let agent = 
             MailboxProcessor.Start(fun inbox ->
@@ -153,12 +145,12 @@ module PhotoManagement =
                         | GetPhotoAgent (chnl, photoId) -> 
                             match lookupMap.TryGetValue photoId with 
                             | true, photoAgent -> 
+                                //printfn $"Use existing photoAgent for photo: {photoId} "
                                 chnl.Reply (Result.Ok photoAgent)
                                 return! loop lookupMap
                             | false, _ -> 
-                                let! photo = simplePhotoApi photoId 
-                                // TBD:: change photo to Photo ID to dely the fetch of photo here
-                                let photoAgent = new PhotoAgent(photo) 
+                                //printfn $"Create new photoAgent for photo: {photoId}"
+                                let photoAgent = new PhotoAgent(photoId, getPhoto) 
                                 chnl.Reply (Result.Ok photoAgent)
                                 return! loop (lookupMap.Add(photoId, photoAgent))
                     }
@@ -170,53 +162,3 @@ module PhotoManagement =
             async {
                 return! agent.PostAndAsyncReply(fun chnl -> GetPhotoAgent(chnl, id))
             }
-
-    // A single instance PhotoManagement
-    let service: PhotoManagementAgent = new PhotoManagementAgent()
-
-    let (|GetPhotoAgent|_|) imgId = 
-        async {
-            let! photoAgentResponse = service.GetPhotoAgent imgId
-            match photoAgentResponse with 
-            | Result.Ok photoAgent -> 
-                return Some photoAgent
-            | Result.Error err -> 
-                printfn $"PhotoManagementAgent failed to get photoAgent: {err}"
-                return None
-        } |> Async.RunSynchronously
-
-    // Helper functions
-    let processMessage message = 
-            let imgId = 
-                match message with 
-                | Text msg -> msg.WhichPhoto
-                | Annotate msg -> msg.WhichPhoto
-
-            async {
-                match imgId with 
-                | GetPhotoAgent photoAgent -> 
-                    let! processMessageResponse = photoAgent.ProcessMessage message
-                    match processMessageResponse with 
-                    | Result.Ok message -> 
-                        printfn $"process message: {message} successfully"
-                        return Result.Ok message
-                    | Result.Error err -> 
-                        return Result.Error $"{photoAgent} processMessage failed with err: {err}"
-                | _ -> 
-                    return Result.Error $"PhotoManagementAgent failed to get photoAgent"
-            }
-
-
-    let getMessages imgId = 
-        async {
-            match imgId with 
-            | GetPhotoAgent photoAgent -> 
-                let! processMessageResponse = photoAgent.ListMessages ()
-                match processMessageResponse with 
-                | Result.Ok messages ->
-                    return Result.Ok messages
-                | Result.Error err -> 
-                    return Result.Error $"{photoAgent} processMessage failed with err: {err}"       
-            | _ -> 
-                return Result.Error $"PhotoManagementAgent failed to get photoAgent"
-        }

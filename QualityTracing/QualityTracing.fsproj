@@ -6,11 +6,15 @@
   </PropertyGroup>
 
   <ItemGroup>    
-
     <Compile Include="Models.fs" />
 	<Compile Include="DB.fs" />
+	<Compile Include="ManagementService.fs" />
 	<Compile Include="Demos.fs" />
     <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FSharp.Control.AsyncSeq" Version="3.2.1" />
   </ItemGroup>
 
 </Project>
