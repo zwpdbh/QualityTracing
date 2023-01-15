@@ -73,7 +73,7 @@ module Photo =
             Product: ProductId
         }
 
-// ThreadAgent represent a place people do communication with a context of a photo
+// PhotoAgent represent a place people do communication with a context of a photo
 module PhotoAgent = 
 
     type PhotoMsg = 
@@ -96,16 +96,19 @@ module PhotoAgent =
                 let rec loop (messages: Photo.Message list option) = 
                     async {
                         let! msg = inbox.Receive()
+                        
                         match msg with 
                         | SendPhotoMessage (chnl, message) -> 
-                            let messages' = 
+                            let messages' =                                 
                                 chnl.Reply (Result.Ok message)
                                 match messages with 
                                 | None ->                                    
                                     Some [message]
                                 | Some existingMessages -> 
                                     Some (message::existingMessages)     
-                            //printfn "updated messages state: %A" messages'
+                            //Represent some computation cost
+                            //do! Async.Sleep (1 * 100) 
+                            //printfn "updated messages for message: %A" msg
                             return! loop(messages')
                         | ListPhotoMessages chnl -> 
                             chnl.Reply (Result.Ok messages)
@@ -133,6 +136,12 @@ module PhotoManagement =
     type ManagePhotoMsg = 
         | GetPhotoAgent of AsyncReplyChannel<Result<PhotoAgent, string>> * string
 
+    let initPhotoAgent (photoId:string, getPhotoFun: string -> Async<Photo.Photo option>)= 
+        async {
+            return new PhotoAgent(photoId, getPhotoFun)
+        }
+
+
     type PhotoManagementAgent (getPhotoFun: string -> Async<Photo.Photo option>) = 
         let getPhoto = getPhotoFun
         let lookupMap: Map<string, PhotoAgent> = Map.empty
@@ -150,7 +159,8 @@ module PhotoManagement =
                                 return! loop lookupMap
                             | false, _ -> 
                                 //printfn $"Create new photoAgent for photo: {photoId}"
-                                let photoAgent = new PhotoAgent(photoId, getPhoto) 
+                                // TBD: return Result<Async<PhotoAgent>, string>? 
+                                let! photoAgent = initPhotoAgent(photoId, getPhoto) 
                                 chnl.Reply (Result.Ok photoAgent)
                                 return! loop (lookupMap.Add(photoId, photoAgent))
                     }
