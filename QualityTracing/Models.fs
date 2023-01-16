@@ -152,12 +152,12 @@ module PhotoManagement =
                         let! msg = inbox.Receive()
                         match msg with 
                         | GetPhotoAgent (chnl, photoId) -> 
-                            match lookupMap.TryGetValue photoId with 
-                            | true, photoAgent -> 
+                            match lookupMap.TryFind photoId with 
+                            | Some photoAgent -> 
                                 //printfn $"Use existing photoAgent for photo: {photoId} "
                                 chnl.Reply (Result.Ok photoAgent)
                                 return! loop lookupMap
-                            | false, _ -> 
+                            | None -> 
                                 //printfn $"Create new photoAgent for photo: {photoId}"
                                 // TBD: return Result<Async<PhotoAgent>, string>? 
                                 let! photoAgent = initPhotoAgent(photoId, getPhoto) 
