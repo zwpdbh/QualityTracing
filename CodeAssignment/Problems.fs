@@ -41,6 +41,38 @@ module Problem01 =
 
 
 
+module Problem02 = 
+    let isAnagram (word01:string) (word02: string) = 
+        let w1 = 
+            word01
+            |> List.ofSeq
+            |> List.sort
+            |> System.String.Concat
+
+        let w2 = 
+            word02
+            |> List.ofSeq
+            |> List.sort
+            |> System.String.Concat
+
+        w1 = w2
+        
+    let getSearchResults (words: string list) (queries: string list) = 
+        let mutable result: string list list = []
+        queries
+        |> List.iter (fun q -> 
+            let matched = 
+                words
+                |> List.filter (fun x -> 
+                    isAnagram x q 
+                )
+            if matched.Length <> 0 then 
+                result <- matched :: result
+        )
+        result
+
+
+
 
 
 
