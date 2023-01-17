@@ -29,7 +29,7 @@ module Photo =
         | Rectangle of point: Point* width: int * height: int 
         | Circle of point: Point * radius: int 
 
-    // Represent a scratch area with message associated with them
+    // Represent a scratch area on the photo
     type Annotation = 
         {
             Id: string 
@@ -51,6 +51,7 @@ module Photo =
             ForAnnotation: AnnotationId option 
         }
 
+    // User send two kind of message to associate with a photo
     type Message = 
         | Text of TextMessage 
         | Annotate of Annotation
@@ -65,10 +66,13 @@ module Photo =
         {
             Id: string 
             Title: string option 
-            ImgPath: string // We don't store the binary data here, only the path to read actual image
+            // We don't store the binary data here, only the path to read actual image.
+            // Load  image data as late as possible. 
+            ImgPath: string 
             ImgSHA1: string
             Format: PicFormat
-            Messages: Message list option  // We will only update this during communication
+            // We will only update this during communication
+            Messages: Message list option  
             CreatAt: System.DateTime
             Product: ProductId
         }
@@ -131,7 +135,6 @@ module PhotoAgent =
 // This module is used in Web Service such that use call its pure functions to send messages associated with a photo id 
 module PhotoManagement = 
     open PhotoAgent 
-    open Photo
 
     type ManagePhotoMsg = 
         | GetPhotoAgent of AsyncReplyChannel<Result<PhotoAgent, string>> * string
